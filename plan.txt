@@ -1,0 +1,36 @@
+# Project Plan: NutriVision
+
+## Project Overview
+NutriVision is a smart cooking assistant integrated into Telegram. It uses AI to identify ingredients from images and suggests recipes based on available inventory and user dietary goals.
+
+## Tech Stack
+- **Frontend:** Telegram Bot API
+- **Computer Vision:** YOLOv12 (for ingredient detection)
+- **Large Language Model:** LLaMA or GPT (for recipe generation and NLP)
+- **Backend:** Python (FastAPI/Flask)
+- **Database:** PostgreSQL/MongoDB (for user profiles, inventory, and history)
+- **External APIs:** OpenFoodFacts (for nutritional data)
+
+## System Architecture
+1. **User Interface:** Telegram Bot for image upload and interaction.
+2. **Vision Layer:** YOLOv12 model processes images to extract ingredient lists.
+3. **Logic Layer:** 
+   - Inventory management and manual correction.
+   - User profile management (dietary goals, history).
+4. **AI Layer:** LLM generates 3 meal suggestions with descriptions and calories.
+5. **Data Layer:** Persistent storage for inventory, meal logs, and user settings.
+
+## Development Plan
+1. **Phase 1: Setup & Vision**
+   - Train/Fine-tune YOLOv12 on food ingredients.
+   - Implement image processing pipeline.
+2. **Phase 2: Telegram Bot & Backend**
+   - Develop the Telegram bot interface.
+   - Set up the backend server and database.
+3. **Phase 3: LLM Integration**
+   - Integrate LLaMA/GPT for recipe generation.
+   - Connect to OpenFoodFacts for nutritional data.
+4. **Phase 4: Inventory & History**
+   - Implement inventory tracking and meal logging logic.
+5. **Phase 5: Testing & Refinement**
+   - User testing and model optimization.

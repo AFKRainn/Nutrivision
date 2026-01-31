@@ -1,0 +1,18 @@
+# Project Progress: NutriVision
+
+## Status Summary
+The project is in the initial documentation and planning phase. The core concept and architecture have been defined based on the project description.
+
+## Completed Tasks
+- [x] Analyzed project description document.
+- [x] Created GitHub-ready `README.md` in English.
+- [x] Established initial `plan.txt` and `progress.txt`.
+
+## Current System State
+- **Documentation:** Project description translated and summarized for GitHub.
+- **Architecture:** Defined a two-layer AI approach (YOLOv12 for vision, LLM for language).
+- **Features:** Planned features include ingredient recognition, meal suggestions, nutrition tracking, and inventory management via Telegram.
+
+## Next Steps
+- Begin environment setup for YOLOv12.
+- Initialize the Telegram bot backend.
