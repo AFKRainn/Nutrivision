@@ -8,7 +8,7 @@ NutriVision is an AI Telegram bot designed to simplify meal planning and nutriti
 - **Intelligent Recipe Suggestions:** Powered by **LLaMA** or **GPT**, the bot provides three personalized meal suggestions based on identified ingredients and user preferences.
 - **Personalized Nutrition Tracking:** Supports dietary goals (calories, meal frequency, vegan/vegetarian options) and tracks nutritional intake using APIs like **OpenFoodFacts**.
 - **Inventory Management:** Automatically updates your home inventory based on what you cook and helps you use ingredients before they expire.
-- **Seamless Telegram Integration:** No need for a new app—interact with the assistant directly through a familiar messaging interface.
+- **Seamless Telegram Integration:** No need for a new app—interact with the assistant directly through a familiar messaging interface..
 
 
 ## work flow
