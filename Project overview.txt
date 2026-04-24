@@ -1,0 +1,356 @@
+NutriVision — full project overview
+
+NutriVision is a Telegram-based intelligent cooking assistant.
+Its purpose is to help a user decide what to cook based on what they already have, while also supporting diet goals, beginner cooking guidance, and basic food-related analytics.
+
+It is built around this idea:
+
+the user should not need a new app
+the user should not manually type everything
+the system should feel like a practical assistant, not just a chatbot
+the system should remember the user over time
+
+So the whole system is centered around Telegram as the interface, a Python backend, a fine-tuned YOLOv12 model for ingredient detection, an LLM for meal generation, an SQL database for memory/personalization, and food APIs for nutrition data.
+
+1. What the project does
+
+The system helps the user in three main ways:
+
+A. Meal suggestion from images
+
+The user sends a batch of images of:
+
+fridge shelves
+drawers
+hidden places
+countertop ingredients
+
+The system detects ingredients from all those images, merges them into one ingredient list, lets the user fix mistakes, then generates exactly 3 meal suggestions.
+
+B. Meal suggestion without images
+
+The user can skip images and ask for meal suggestions based only on:
+
+saved inventory
+diet settings
+previous history
+
+So the assistant works even when the user does not want to photograph the fridge.
+
+C. Tracking and analytics
+
+The system stores what happened over time and later gives:
+
+calories per day
+average calories per day
+meal count per day
+goal adherence
+ingredient usage insights
+variety / repetition summaries
+2. Who the project is for
+
+The main audiences are:
+
+People following a diet
+
+They want:
+
+calorie-aware meals
+meal suggestions that fit their goals
+vegan mode when needed
+progress tracking without too much manual work
+New cooks
+
+They want:
+
+simple meal ideas
+clear instructions
+something that tells them what to do next
+help using what is available instead of searching manually
+People trying to reduce food waste
+
+They want:
+
+to use ingredients already at home
+fewer forgotten ingredients
+suggestions based on what is actually available
+less random buying and throwing away food
+3. High-level system structure
+
+The project has five main parts:
+
+1) Frontend / user interface
+
+This is Telegram.
+
+The user interacts with the system through:
+
+commands
+image sending
+choosing meals
+asking for analytics
+manually adding/removing ingredients
+
+There is no custom web app or mobile app in the main project flow.
+
+2) Backend
+
+This is a Python local server.
+
+The backend is the brain that coordinates everything:
+
+receives Telegram messages and commands
+manages active sessions
+sends images to the vision model
+gathers data from the database
+calls the language model
+calls food APIs
+saves results
+sends back the final response to Telegram
+
+So the backend is the orchestration layer.
+
+3) Vision model
+
+This is YOLOv12 fine-tuned on ingredient detection.
+
+Its job is:
+
+take one image at a time
+detect visible ingredients
+output labels and confidence
+help build the ingredient list for the session
+
+Important detail:
+the project supports batch image sessions, so the user can send multiple photos in one session.
+That matters because one fridge image is usually not enough.
+
+The workflow is:
+
+image 1 → detections
+image 2 → detections
+image 3 → detections
+merge all detections into one final ingredient list
+
+If the model misses something, the user can fix it manually.
+
+4) Language model
+
+This is LLaMA or GPT, depending on your final implementation choice.
+
+Its job is not image recognition here.
+Its job is to take the final corrected ingredient list + user context and generate:
+
+exactly 3 meal suggestions
+short descriptions
+estimated calories
+short cooking steps
+
+Then, after the user chooses one meal, the model generates:
+
+a clearer How to Cook guide for that chosen meal
+
+So there are really two language-generation outputs:
+
+meal suggestion generation
+detailed cooking guidance
+5) Database
+
+This is an SQL database.
+
+Its job is memory and personalization.
+
+The database stores:
+
+user profile
+diet settings
+inventory
+detection sessions
+raw detections
+merged detections
+corrected ingredient list
+suggestion logs
+chosen meal
+meal history
+daily summaries
+last suggestion
+cached nutrition values
+error/event logs
+
+Without the database, the project becomes a one-time toy.
+With the database, it becomes an assistant that remembers the user and improves continuity.
+
+4. Core workflow of the system
+
+This is the full working flow.
+
+Flow 1: image-based suggestion
+User starts a session in Telegram
+User sends a batch of images
+Backend receives the images
+YOLOv12 runs on each image
+Detections are merged into one ingredient list
+User reviews the list
+User manually adds/removes ingredients if needed
+Backend loads user context from database
+Backend optionally queries food APIs for nutrition values
+Backend builds prompt/context for the language model
+LLM generates exactly 3 meal suggestions
+User chooses one
+LLM generates a more detailed How to Cook response
+Backend saves everything to database
+Analytics can later use this stored data
+Flow 2: inventory-only suggestion
+User asks for meal suggestions without sending images
+Backend loads current inventory from database
+Backend loads diet settings and history
+Backend prepares meal generation context
+LLM generates exactly 3 meal suggestions
+User chooses one
+Backend stores the result and updates history
+
+This is useful when the user already trusts the saved inventory.
+
+Flow 3: analytics flow
+User asks for analytics
+Backend queries meal history and daily summaries
+Backend computes the requested metrics
+Backend generates graphs and summaries
+Telegram sends them back to the user
+5. Main commands / feature groups
+
+The command system is grouped into categories.
+
+A. Diet commands
+
+These let the user set preferences and goals.
+
+Examples:
+
+set calorie goal
+set meals per day
+enable vegan mode
+disable vegan mode
+
+Default state:
+
+no calorie goal
+vegan mode off
+no diet restrictions unless user sets them
+B. Manual commands
+
+These help fix real-world issues.
+
+Examples:
+
+add ingredient
+remove ingredient
+manually log a meal
+update inventory manually
+
+These are important because the image model will never be perfect in real life.
+
+C. Analytics commands
+
+These let the user see trends.
+
+Examples:
+
+average calories per day
+calories per day graph
+meals per day
+goal adherence
+ingredient usage insights
+meal repetition / variety summary
+6. Personalization logic
+
+The project is not only “detect ingredients → give meals.”
+
+It becomes personal because it remembers:
+
+what the user usually eats
+what ingredients are often available
+what diet settings are active
+what was suggested last time
+what was actually chosen
+how the user behaves over time
+
+This affects suggestions in several ways:
+
+Avoid repetition
+
+The system should not keep suggesting the same meal every session.
+
+Respect diet settings
+
+If vegan mode is on, meals should follow that.
+If calorie goals exist, suggestions should stay closer to them.
+
+Use available ingredients
+
+Meals should prefer ingredients that are actually detected or stored in inventory.
+
+Improve relevance over time
+
+Because history exists, future suggestions can feel less random.
+
+7. What exactly is stored
+
+Here’s the storage layer more concretely.
+
+User data
+Telegram user ID
+diet settings
+calories goal
+meals per day
+vegan mode
+Inventory data
+ingredient name
+amount if tracked
+current availability
+updates over time
+Session data
+session ID
+images in that session
+raw detections per image
+merged detections
+final corrected ingredients
+Suggestion data
+the 3 meals suggested
+calorie estimates
+which one the user chose
+time of suggestion
+Meal history
+what meal was logged
+calories
+time/date
+whether it came from suggestion or manual log
+Summary data
+calories per day
+meals per day
+trend-friendly aggregated records
+System data
+last suggestion
+nutrition cache
+error logs
+API/model failure logs
+8. Nutrition data role
+
+Food APIs like OpenFoodFacts support the system by giving:
+
+calorie values
+product nutrition info
+ingredient-related nutritional estimates
+
+This matters because the language model alone should not be trusted as the only source for calories.
+
+So the LLM handles:
+
+meal generation
+wording
+instructions
+
+And the food API supports:
+
+nutritional grounding
+more reliable calorie estimates

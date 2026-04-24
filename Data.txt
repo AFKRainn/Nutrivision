@@ -1,0 +1,92 @@
+Data that will be stored
+    User profile data
+    Telegram user ID
+    First interaction date
+    Diet mode status
+    Vegan mode on/off
+    Daily calorie goal
+    Number of meals per day
+    Default state: no diet, vegan off, no calorie goal
+    Inventory data
+    Ingredient name
+    Quantity or rough amount
+    Unit if available
+    Current availability
+    Last updated time
+    Source of update: image detection, manual add, manual remove, or meal usage
+    Detection session data
+    Session ID
+    User ID
+    Session start time
+    Session status: active, corrected, finalized
+    Number of images sent
+    Raw ingredients detected from each image
+    Confidence score per detected ingredient
+    Merged ingredient list
+    Final corrected ingredient list after manual add/remove
+    Suggestion data
+    Suggestion ID
+    Session ID
+    User ID
+    The three meals suggested
+    Calories for each suggested meal
+    Ingredients used in each suggestion
+    Which meal the user selected
+    Whether the user rejected the suggestions
+    Last suggested meal to avoid repetition
+    Meal history data
+    Meal ID
+    User ID
+    Meal name
+    Ingredients used
+    Total calories
+    Date and time
+    Source: suggested meal or manually logged meal
+    Diet settings at the time of the meal
+    Daily summary data
+    User ID
+    Date
+    Total calories for the day
+    Number of meals that day
+    Whether the calorie goal was met, exceeded, or not set
+    Nutrition cache
+    Ingredient or food name
+    Calories / nutrition values returned from the API
+    API source, such as OpenFoodFacts
+    Time retrieved
+    Error / system logs
+    API failures
+    Model failures
+    Invalid user commands
+    Empty detection results
+    Failed suggestion attempts
+
+
+
+
+Data analytics
+    Diet and calorie analytics
+    Average calories per day
+    Calories-per-day graph for last 7 or 30 days
+    Total calories per day
+    Meals per day
+    Goal adherence: days under, near, or over calorie goal
+    Weekly/monthly calorie trend
+    Meal history analytics
+    Recent meals summary
+    Most repeated meals
+    Meal variety score based on unique meals
+    Suggested meals vs selected meals
+    Rejected suggestions count
+    Ingredient analytics
+    Most-used ingredients
+    Ingredients detected often but rarely used
+    Ingredients currently in inventory
+    Ingredients consumed from inventory
+    Inventory change history
+    Assistant performance analytics
+    Number of sessions created
+    Number of images used per session
+    Manual correction frequency: how often users add/remove ingredients
+    Empty or low-confidence detection cases
+    Suggestion acceptance rate: how often the user picks one of the three suggestions

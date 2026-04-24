@@ -1,0 +1,109 @@
+Main Navigation Commands
+Command	What it does
+/start	Starts the bot, creates the user profile if needed, and shows the main Telegram interface with the available actions.
+/newsession	Starts a new meal suggestion session. The bot asks the user to send fridge/counter images and shows the next possible actions.
+/cancel	Cancels the current active session and returns the user to the main menu.
+/mainmenu	Shows the main menu again with all main categories: new session, inventory suggestion, diet settings, inventory, analytics.
+Image / Suggestion Commands
+Command	What it does
+/newsession	Starts a new image-based session. The user can then send multiple images in the same session.
+/done	Tells the system the user finished sending images, so the model can process the batch.
+/suggest	Generates exactly three meal suggestions from the finalized ingredient list.
+/inventorysuggest	Generates exactly three meal suggestions using the saved inventory only, without sending new images.
+/choose1	Selects the first suggested meal.
+/choose2	Selects the second suggested meal.
+/choose3	Selects the third suggested meal.
+/cook	Sends the detailed “How to Cook” instructions for the chosen meal.
+/regenerate	Generates a new set of three suggestions if the user is unhappy with the current ones. If this happens twice in a row, the fallback model logic can be triggered.
+Manual Correction Commands
+Command	What it does
+/addingredient	Adds a missing ingredient to the current session’s ingredient list.
+/removeingredient	Removes a wrongly detected ingredient from the current session’s ingredient list.
+/showingredients	Shows the current ingredient list after detection and manual corrections.
+/confirmingredients	Confirms that the ingredient list is correct and ready for meal suggestion generation.
+/loginmeal	Lets the user manually log a meal they ate without using image detection.
+/updateinventory	Lets the user manually update inventory by adding or removing ingredients.
+Diet Commands
+Command	What it does
+/setcalories	Sets the user’s daily calorie goal.
+/setmeals	Sets the number of meals the user wants per day.
+/veganon	Enables vegan mode, so future suggestions must be vegan.
+/veganoff	Disables vegan mode and returns to the default non-vegan mode.
+/resetdiet	Resets diet settings back to default: no calorie goal, no meal count restriction, vegan mode off.
+/showdiet	Shows the current diet settings.
+Inventory Commands
+Command	What it does
+/showinventory	Shows the user’s current saved inventory.
+/addinventory	Adds ingredients manually to the saved inventory.
+/removeinventory	Removes ingredients manually from the saved inventory.
+/clearinventory	Clears the saved inventory if the user wants to reset it.
+/inventorysuggest	Uses the current inventory to generate meal suggestions without needing images.
+Analytics Commands
+Command	What it does
+/avgcalories	Shows the user’s average calories per day for a selected time period.
+/caloriegraph	Generates a calories-per-day graph, for example for the last 7 or 30 days.
+/mealsummary	Shows a summary of recent meals, including names, calories, and dates.
+/mealsperday	Shows how many meals the user logged per day.
+/goaladherence	Shows how many days the user was under, near, or over their calorie goal.
+/mostused	Shows the most-used ingredients based on meal history.
+/unusedingredients	Shows ingredients that are detected or stored often but rarely used in meals.
+/variety	Shows meal variety and repetition, such as repeated meals and number of unique meals.
+/sessionstats	Shows basic system-use analytics, such as number of sessions, images per session, and correction frequency.
+How the Telegram Interface Changes by Step
+Step 1: Main Menu
+
+After /start, the bot shows buttons like:
+
+New Session
+Suggest from Inventory
+Diet Settings
+Inventory
+Analytics
+
+The user can click these instead of typing commands.
+
+Step 2: Image Session Started
+
+After /newsession, the bot says something like:
+“Send fridge, drawer, or countertop images. When finished, press Done.”
+
+Available buttons:
+
+Done
+Cancel Session
+Step 3: After Image Detection
+
+After the model detects ingredients, the bot shows the detected list and gives correction options.
+
+Available buttons:
+
+Add Ingredient
+Remove Ingredient
+Show Ingredients
+Confirm Ingredients
+Cancel Session
+Step 4: After Ingredients Are Confirmed
+
+Once the final ingredient list is ready, the bot shows:
+
+Generate Suggestions
+Update Inventory
+Cancel Session
+Step 5: After Three Meal Suggestions
+
+The bot shows the three suggested meals and gives selection options.
+
+Available buttons:
+
+Choose Meal 1
+Choose Meal 2
+Choose Meal 3
+Regenerate Suggestions
+Step 6: After User Chooses a Meal
+
+The bot sends the detailed cooking guide and then shows:
+
+Save Meal
+Update Inventory
+Start New Session
+View Analytics
