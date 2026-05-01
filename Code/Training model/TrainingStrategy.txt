@@ -1,0 +1,51 @@
+AICook + Fridge detection + Fridge Object datasets → real fridge context
+LVIS Fruits & Vegetables → broad produce coverage, already YOLO-formatted
+FOOD-INGREDIENTS dataset from Roboflow → ingredient diversity
+
+--------------------------------------------------------------------------------
+Four-stage training plan (NutriVision vision / YOLOv12)
+--------------------------------------------------------------------------------
+
+1) Data preparation
+Before training, data must match YOLO layout:
+- One .txt label file per image.
+- Each label line: class_id x_center y_center width height (all normalized 0–1).
+- A data.yaml pointing at train/val/test image folders and listing class names.
+
+Roboflow (or manual export) supplies this layout. If multiple sources are merged, class IDs are remapped so they do not collide; names are merged by string identity, so inconsistent naming (e.g. tomato vs Tomato) can create duplicate semantics — review the final names list in data.yaml and normalize manually if needed.
+
+2) Transfer learning (not from scratch)
+Do not train from random initialization. Load pretrained weights (e.g. yolov12n.pt trained on COCO) and fine-tune on fridge/ingredient data. Early layers keep generic edge/texture features; later layers adapt to your classes. This reduces data and time versus training from zero and usually generalizes better on small merged datasets.
+
+3) Training loop (per epoch / batch)
+Each epoch = one full pass over the training set. Per batch: images → forward pass → compare predictions to labels → loss → weight update.
+Loss has three main pieces: box (localization/size), class (category), objectness (is there an object here). Optimizer (e.g. SGD or AdamW) steps weights to reduce loss over many batches.
+
+4) Monitoring — mAP
+Track mAP50 (mean Average Precision at IoU 0.5): per class, how correct and complete detections are, then averaged across classes.
+Rough guide: >0.5 usable, >0.7 good, >0.85 strong. For merged community fridge data, ~0.6–0.75 is a realistic target range.
+
+--------------------------------------------------------------------------------
+Ultralytics training sketch (for later; not run in prep-only phase)
+--------------------------------------------------------------------------------
+
+from ultralytics import YOLO
+model = YOLO("yolov12n.pt")
+model.train(
+    data="path/to/merged/data.yaml",
+    epochs=50,
+    imgsz=640,
+    batch=16,
+    patience=10,
+    lr0=0.01,
+    augment=True,
+    device=0,
+    project="nutrivision",
+    name="fridge_run1",
+)
+
+Parameter intent:
+- epochs — more is not always better; too many epochs can overfit.
+- batch — upper bound is GPU memory; larger batches often train more stably.
+- patience — early stop if validation metric stalls.
+- augment — flips/crops/color jitter as free diversity so the model is not tied to one lighting or angle.
