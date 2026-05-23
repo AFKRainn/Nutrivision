@@ -1,51 +1,142 @@
-AICook + Fridge detection + Fridge Object datasets → real fridge context
-LVIS Fruits & Vegetables → broad produce coverage, already YOLO-formatted
-FOOD-INGREDIENTS dataset from Roboflow → ingredient diversity
+NutriVision — vision model fine-tuning strategy
+================================================================================
 
+We are building a single-stage object detector (YOLOv12 via Ultralytics) that reads
+fridge and pantry photos and outputs bounding boxes plus ingredient class names.
+That list feeds the rest of NutriVision (user corrections, meal suggestions, inventory).
+This document is our working plan for data, training, and evaluation. Steps may shift in
+practice, but this is what we intend to follow.
+
+
+What we are training
 --------------------------------------------------------------------------------
-Four-stage training plan (NutriVision vision / YOLOv12)
+We load pretrained weights (yolov12n.pt, trained on COCO) and fine-tune on our data.
+We are not training vision from scratch. The network has a backbone (generic visual
+features), a neck (multi-scale fusion), and a head (box + class per grid cell). Early
+layers keep edge and texture knowledge; the head and upper layers adapt to our classes
+and fridge-like scenes.
+
+At inference, an image passes through the network, produces many candidate boxes, then
+non-maximum suppression keeps the best detections. During training, the same forward
+pass happens, but each candidate is matched to ground-truth labels and scored with a loss.
+
+
+What one training example is
 --------------------------------------------------------------------------------
+Per image we need:
+- The RGB image (resized at train time, e.g. 640×640).
+- A matching .txt label file: one line per object —
+  class_id  x_center  y_center  width  height
+  with box values normalized to 0–1 relative to image size.
+- A data.yaml that lists class names (index → name), nc, and paths to train/val (and
+  test if we use it).
 
-1) Data preparation
-Before training, data must match YOLO layout:
-- One .txt label file per image.
-- Each label line: class_id x_center y_center width height (all normalized 0–1).
-- A data.yaml pointing at train/val/test image folders and listing class names.
+Ultralytics reads data.yaml and the folders; we own correctness of paths, class list,
+and label files after any merge.
 
-Roboflow (or manual export) supplies this layout. If multiple sources are merged, class IDs are remapped so they do not collide; names are merged by string identity, so inconsistent naming (e.g. tomato vs Tomato) can create duplicate semantics — review the final names list in data.yaml and normalize manually if needed.
 
-2) Transfer learning (not from scratch)
-Do not train from random initialization. Load pretrained weights (e.g. yolov12n.pt trained on COCO) and fine-tune on fridge/ingredient data. Early layers keep generic edge/texture features; later layers adapt to your classes. This reduces data and time versus training from zero and usually generalizes better on small merged datasets.
-
-3) Training loop (per epoch / batch)
-Each epoch = one full pass over the training set. Per batch: images → forward pass → compare predictions to labels → loss → weight update.
-Loss has three main pieces: box (localization/size), class (category), objectness (is there an object here). Optimizer (e.g. SGD or AdamW) steps weights to reduce loss over many batches.
-
-4) Monitoring — mAP
-Track mAP50 (mean Average Precision at IoU 0.5): per class, how correct and complete detections are, then averaged across classes.
-Rough guide: >0.5 usable, >0.7 good, >0.85 strong. For merged community fridge data, ~0.6–0.75 is a realistic target range.
-
+Loss and optimization (what the training loop optimizes)
 --------------------------------------------------------------------------------
-Ultralytics training sketch (for later; not run in prep-only phase)
+Each batch: forward pass → match predictions to labels → compute loss → backprop →
+optimizer update.
+
+We optimize a weighted sum roughly of:
+- Box loss — penalizes wrong location/size (IoU-based; CIoU-style in practice).
+- Class loss — penalizes wrong ingredient name (classification on matched cells).
+- DFL — refines box boundaries (distribution-based fine regression).
+
+Assignment decides which grid cells are responsible for which ground-truth objects;
+unmatched cells are pushed toward background. We do not implement this ourselves;
+Ultralytics runs it, but we interpret results through val mAP and visual checks.
+
+We track mAP50 (mean Average Precision at IoU 0.5): for each class, how often
+detections are correct and complete, then averaged. Rough targets for us:
+usable ~0.5+, good ~0.7+, strong ~0.85+; on a merged community fridge dataset,
+~0.6–0.75 is a realistic aim for a first production-quality pass.
+
+
+Datasets we have under Data/
 --------------------------------------------------------------------------------
+- aicook — kitchen/fridge-style ingredients; YOLO export.
+- Fridge detection — fridge context (layout and yaml to confirm on disk).
+- Fridge Object.v3i.yolov12 — fridge objects; YOLOv12 export.
+- Fridge objects.v12i.yolov12 — likely overlap with another fridge export; we audit
+  before merging to avoid duplicate work.
+- FOOD-INGREDIENTS dataset.v4i.yolov12 — large class set (~120); naming may differ
+  from other sets.
+- LVIS_Fruits_And_Vegetables — broad produce; YOLO layout; strong for fruits/veg.
+- archive (1) — inspect before use.
 
-from ultralytics import YOLO
-model = YOLO("yolov12n.pt")
-model.train(
-    data="path/to/merged/data.yaml",
-    epochs=50,
-    imgsz=640,
-    batch=16,
-    patience=10,
-    lr0=0.01,
-    augment=True,
-    device=0,
-    project="nutrivision",
-    name="fridge_run1",
-)
+Several Roboflow-style exports point train/val paths like ../train/images, so images
+may live beside dataset folders under Data/, not only inside each subfolder. We trust
+disk layout over yaml when paths disagree.
 
-Parameter intent:
-- epochs — more is not always better; too many epochs can overfit.
-- batch — upper bound is GPU memory; larger batches often train more stably.
-- patience — early stop if validation metric stalls.
-- augment — flips/crops/color jitter as free diversity so the model is not tied to one lighting or angle.
+
+Phase A — Inventory
+--------------------------------------------------------------------------------
+We list what is under Data/: folder names, presence of data.yaml, where images and
+labels actually live, image and label counts, and nc plus class names per yaml.
+
+We record which splits exist (train, val, valid, test) per export and whether val
+images are truly held out. This phase is filesystem-first; we do not assume a single
+layout across sources.
+
+
+Phase B — Harmonize classes
+--------------------------------------------------------------------------------
+We build one canonical class vocabulary for the product (v1 may be a subset of all
+names, not every class from every dataset).
+
+We map synonyms and casing (tomato vs Tomato), drop or merge rare duplicates, and
+decide which datasets contribute which names. We document the final name list before
+any merge or train run. Bad harmonization shows up later as duplicate classes and
+confused mAP, so we fix it here.
+
+
+Phase C — Merge and layout (when we combine sources)
+--------------------------------------------------------------------------------
+We produce one YOLO tree: train/val(/test) with images/ and labels/, plus one data.yaml
+with path, nc, and names.
+
+We remap class IDs per source so IDs do not collide. We prefix image filenames by
+source id when needed to avoid basename clashes. We verify every train/val path resolves
+and that each image has a label file (or we handle missing labels explicitly).
+
+We may start with a single strong fridge dataset for run 1 and merge LVIS/FOOD in a
+later run once baseline mAP is understood.
+
+
+Phase D — Fine-tune
+--------------------------------------------------------------------------------
+We load YOLO("yolov12n.pt") and call train with our merged (or single) data.yaml.
+
+We will use settings along these lines unless we change them after Phase A–C:
+- epochs ~50 (stop earlier if val mAP plateaus),
+- imgsz 640,
+- batch sized to GPU memory (e.g. 16 if it fits),
+- patience ~10 for early stopping,
+- lr0 ~0.01 with default schedule,
+- augment True (flips, color, crops for lighting/angle robustness),
+- device GPU when available,
+- project/name for run artifacts under nutrivision/fridge_run*.
+
+We hold out a val set that reflects real fridge photos. We watch box loss, cls loss,
+and mAP50 on val; we do not treat train loss alone as success.
+
+
+Phase E — Sanity check before Telegram integration
+--------------------------------------------------------------------------------
+We run the exported best weights on held-out and a few real fridge photos.
+
+We check: Are common ingredients found? Are boxes plausible? Are confusions clustered
+on specific classes (fix labels or harmonization)? We only wire the model into the
+bot pipeline after this pass is acceptable for our allowlisted testers.
+
+
+What Ultralytics does vs what we own
+--------------------------------------------------------------------------------
+Ultralytics: training loop, assignment, loss, optimizer, checkpoints, default metrics.
+
+We own: dataset choice and merge, class list, path correctness, train/val split,
+evaluation on our target domain, and deciding when the detector is good enough for
+NutriVision sessions.
