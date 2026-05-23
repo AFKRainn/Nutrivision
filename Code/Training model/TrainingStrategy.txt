@@ -10,7 +10,7 @@ practice, but this is what we intend to follow.
 
 What we are training
 --------------------------------------------------------------------------------
-We load pretrained weights (yolov12n.pt, trained on COCO) and fine-tune on our data.
+We load pretrained weights (yolo12n.pt via Ultralytics, trained on COCO) and fine-tune on our data.
 We are not training vision from scratch. The network has a backbone (generic visual
 features), a neck (multi-scale fusion), and a head (box + class per grid cell). Early
 layers keep edge and texture knowledge; the head and upper layers adapt to our classes
@@ -65,7 +65,6 @@ Datasets we have under Data/
 - FOOD-INGREDIENTS dataset.v4i.yolov12 — large class set (~120); naming may differ
   from other sets.
 - LVIS_Fruits_And_Vegetables — broad produce; YOLO layout; strong for fruits/veg.
-- archive (1) — inspect before use.
 
 Several Roboflow-style exports point train/val paths like ../train/images, so images
 may live beside dataset folders under Data/, not only inside each subfolder. We trust
@@ -84,37 +83,54 @@ layout across sources.
 
 Phase B — Harmonize classes
 --------------------------------------------------------------------------------
-We build one canonical class vocabulary for the product (v1 may be a subset of all
-names, not every class from every dataset).
+We build one canonical class vocabulary for the product that covers every dataset we
+merge into training (union or curated superset — we document the choice).
 
-We map synonyms and casing (tomato vs Tomato), drop or merge rare duplicates, and
-decide which datasets contribute which names. We document the final name list before
-any merge or train run. Bad harmonization shows up later as duplicate classes and
-confused mAP, so we fix it here.
+We map synonyms and casing (tomato vs Tomato), slash aliases (LVIS), and spelling
+variants (egg vs eggs, tomato vs tomatoes). We document the final name list and per-
+dataset old_id → v1_id maps before any merge or train run. Bad harmonization shows up
+later as duplicate classes and confused mAP, so we fix it here.
+
+Notebook work so far includes analysis helpers (proposed_canonical, merge groups) and
+a 53-class list from Fridge Object only; that list will expand when we finish the full
+merge.
 
 
-Phase C — Merge and layout (when we combine sources)
+Phase C — Merge and layout (all sources — required before final train)
 --------------------------------------------------------------------------------
-We produce one YOLO tree: train/val(/test) with images/ and labels/, plus one data.yaml
-with path, nc, and names.
+We produce one YOLO tree: train/val(/test) with images/ and labels/, plus one merged
+data.yaml with path, nc, and names. This is the dataset we use for the real fine-tune.
 
-We remap class IDs per source so IDs do not collide. We prefix image filenames by
+Sources to combine:
+- All five YOLO yaml datasets (aicook, FOOD-INGREDIENTS, Fridge Object, Fridge objects
+  v12, LVIS_Fruits_And_Vegetables).
+- Fridge detection — convert COCO (_annotations.coco.json) to YOLO txt, split train/val.
+
+We remap class IDs per source into the harmonized v1 list. We prefix image filenames by
 source id when needed to avoid basename clashes. We verify every train/val path resolves
 and that each image has a label file (or we handle missing labels explicitly).
 
-We may start with a single strong fridge dataset for run 1 and merge LVIS/FOOD in a
-later run once baseline mAP is understood.
+Prep already done: Fridge Object on-disk layout and data.run1.yaml (correct relative
+paths for that folder only). That file supports Phase D smoke training, not the final
+merged dataset.
 
 
 Phase D — Fine-tune
 --------------------------------------------------------------------------------
-We load YOLO("yolov12n.pt") and call train with our merged (or single) data.yaml.
+Two steps:
 
-We will use settings along these lines unless we change them after Phase A–C:
-- epochs ~50 (stop earlier if val mAP plateaus),
+1) Smoke train (optional but recommended): YOLO("yolo12n.pt").train on data.run1.yaml
+   (Fridge Object only) for 1–3 epochs — confirms GPU, Ultralytics, and paths. Not the
+   production model.
+
+2) Final train (after Phase C merge): same API on the merged data.yaml with full epochs
+   and TrainingStrategy hyperparameters below.
+
+We will use settings along these lines for the final train (notebook: production run):
+- epochs 35, patience 15 (early stop if val mAP plateaus),
 - imgsz 640,
-- batch sized to GPU memory (e.g. 16 if it fits),
-- patience ~10 for early stopping,
+- batch 12 on 16 GB GPU (production default),
+- workers 4 on Windows (2 if unstable; 0 only for debugging),
 - lr0 ~0.01 with default schedule,
 - augment True (flips, color, crops for lighting/angle robustness),
 - device GPU when available,

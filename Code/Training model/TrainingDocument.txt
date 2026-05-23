@@ -1,0 +1,69 @@
+NutriVision — training progress log
+================================================================================
+We record what we actually do in the notebook and on disk. TrainingStrategy.txt
+is the plan; this file is the running log. When a "Next" item is finished, we move
+it into "Done" and add a new Next.
+
+Product goal (confirmed): fine-tune on **all** datasets under Data/, not a single
+export. Phase C full merge is required before the final train. Phase D smoke train on
+data.run1.yaml is only a GPU/pipeline check.
+
+
+Done
+--------------------------------------------------------------------------------
+- Wrote TrainingStrategy.txt (phases A–E, data layout, loss/mAP, our Data/ folders).
+- Reorganized VisionModelTraim.ipynb; Phase A heading once, focused markdown per cell.
+- Phase A: listed top-level Data/ names; one-level tree per folder.
+- Phase A: IMG_EXTS; find_data_yaml_files; 5 data.yaml paths listed.
+- Phase A: names_to_list; printed nc and all class names for each yaml.
+- Phase A: noted folders without yaml (Fridge detection).
+- Phase A: helpers cell (find yaml, names_to_list, image/label counts); aicook
+  train/valid/test image and label counts on disk (train 362/362, valid 103/103,
+  test 51/51).
+- Phase A: FOOD-INGREDIENTS dataset.v4i.yolov12 split counts (train 8331/8331,
+  valid 823/823, test 572/572 — notebook run confirmed).
+- Phase A: Fridge Object.v3i.yolov12 split counts (train 5502/5502, valid
+  3040/3040, test 1331/1331 — notebook run confirmed).
+- Phase A: Fridge objects.v12i.yolov12 split counts (train 2184/2184, valid
+  123/123, test 106/106 — notebook run confirmed).
+- Phase A: LVIS_Fruits_And_Vegetables split counts (train 6721/6721, val
+  1500/1500, test 180/180 — notebook run confirmed; splits are train/val/test
+  under images/ and labels/, not valid).
+- Phase A: Fridge detection counts (train: 3148 images flat in train/, 0 YOLO
+  .txt, COCO _annotations.coco.json present — notebook run confirmed; no
+  valid/test split in export; COCO not YOLO txt).
+- Phase A: sample YOLO image + label from aicook train (12 boxes; decoded names
+  e.g. beef, tomato, cheese, apple — notebook run confirmed). Phase A inventory
+  complete.
+- Phase B: dataset_classes dict built from 5 yaml datasets (aicook 30, FOOD 120,
+  Fridge Object 53, Fridge objects v12 10, LVIS 63 — notebook run confirmed).
+- Phase B: casing collisions — 276 name entries, 226 unique exact spellings, 191
+  unique case-insensitive keys, 35 casing-only groups (notebook run confirmed).
+- Phase B: helpers under Phase B (alias_parts, proposed_canonical).
+- Phase B: 19 slash-separated LVIS names; 39 merge groups; MERGED_CLASS_NAMES
+  nc=181 (notebook run confirmed).
+- Phase B: per-dataset id remap tables (all yaml sources renumber into sorted
+  181-class list — notebook run confirmed).
+- Phase C (prep): data.run1.yaml for Fridge Object smoke train only.
+- Phase C (full merge): copied 5 yaml datasets → 22708 images, 120190 boxes;
+  Fridge detection COCO → 2518 train + 630 val images, 39548 boxes, 30 categories
+  mapped (skipped generic Food); wrote Data/merged/data.merged.yaml (nc 181).
+- Phase C (verify): train 18897/18897, val 4719/4719, test 2240/2240 images and
+  labels (1:1 — notebook run confirmed). Phase C complete.
+- Phase D smoke train: finished earlier (1 epoch, runs/smoke_fridge_object/,
+  pipeline check only — not final model).
+- Phase D fixes: requirements path, yolo12n.pt, absolute yaml paths, workers=0
+  on Windows.
+- Notebook cleanup: Phase A/B/C each have Helpers where needed.
+
+
+Next
+--------------------------------------------------------------------------------
+- Phase D (final): run **Final train on merged data** cell (35 epochs, patience 15,
+  batch 12, workers 4 on Windows). Output: runs/nutrivision_merged_final/weights/best.pt
+- Phase E: sanity check on real fridge photos before Telegram integration.
+
+
+Later (placeholders — not started)
+--------------------------------------------------------------------------------
+- Optional: tune hyperparameters after first full train (epochs, batch, patience).
