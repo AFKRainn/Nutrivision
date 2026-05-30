@@ -88,12 +88,11 @@ merge into training (union or curated superset — we document the choice).
 
 We map synonyms and casing (tomato vs Tomato), slash aliases (LVIS), and spelling
 variants (egg vs eggs, tomato vs tomatoes). We document the final name list and per-
-dataset old_id → v1_id maps before any merge or train run. Bad harmonization shows up
-later as duplicate classes and confused mAP, so we fix it here.
+dataset old_id → merged_id maps before any merge or train run. Bad harmonization shows
+up later as duplicate classes and confused mAP, so we fix it here.
 
-Notebook work so far includes analysis helpers (proposed_canonical, merge groups) and
-a 53-class list from Fridge Object only; that list will expand when we finish the full
-merge.
+Notebook work includes analysis helpers (proposed_canonical, merge groups) and the
+merged vocabulary (MERGED_CLASS_NAMES) built from the union of all yaml sources.
 
 
 Phase C — Merge and layout (all sources — required before final train)
@@ -106,35 +105,31 @@ Sources to combine:
   v12, LVIS_Fruits_And_Vegetables).
 - Fridge detection — convert COCO (_annotations.coco.json) to YOLO txt, split train/val.
 
-We remap class IDs per source into the harmonized v1 list. We prefix image filenames by
-source id when needed to avoid basename clashes. We verify every train/val path resolves
-and that each image has a label file (or we handle missing labels explicitly).
+We remap class IDs per source into the harmonized merged list. We prefix image filenames
+by source id when needed to avoid basename clashes. We verify every train/val path
+resolves and that each image has a label file (or we handle missing labels explicitly).
 
-Prep already done: Fridge Object on-disk layout and data.run1.yaml (correct relative
-paths for that folder only). That file supports Phase D smoke training, not the final
-merged dataset.
+The merged tree (Data/merged/ + data.merged.yaml) is the single dataset the final
+fine-tune trains on.
 
 
 Phase D — Fine-tune
 --------------------------------------------------------------------------------
-Two steps:
+The final train runs from the standalone train.py script (not the notebook), pointing
+at the merged data.merged.yaml. Running it as a plain Python process (instead of inside
+Jupyter) avoids the Windows dataloader-worker spawn problems we hit in the notebook.
 
-1) Smoke train (optional but recommended): YOLO("yolo12n.pt").train on data.run1.yaml
-   (Fridge Object only) for 1–3 epochs — confirms GPU, Ultralytics, and paths. Not the
-   production model.
-
-2) Final train (after Phase C merge): same API on the merged data.yaml with full epochs
-   and TrainingStrategy hyperparameters below.
-
-We will use settings along these lines for the final train (notebook: production run):
+Settings we use for the final train (train.py):
+- model yolo12n.pt (COCO-pretrained), nc adapted to the merged class count,
 - epochs 35, patience 15 (early stop if val mAP plateaus),
 - imgsz 640,
-- batch 12 on 16 GB GPU (production default),
-- workers 4 on Windows (2 if unstable; 0 only for debugging),
-- lr0 ~0.01 with default schedule,
-- augment True (flips, color, crops for lighting/angle robustness),
+- batch 16 on the 16 GB GPU,
+- workers 8 (process run, not notebook),
+- cache 'disk' (decoded images cached to disk; avoids the RAM-cache + worker-spawn
+  memory blow-up we saw),
+- cos_lr True, close_mosaic 10,
 - device GPU when available,
-- project/name for run artifacts under nutrivision/fridge_run*.
+- project/name -> runs/nutrivision_merged_final.
 
 We hold out a val set that reflects real fridge photos. We watch box loss, cls loss,
 and mAP50 on val; we do not treat train loss alone as success.

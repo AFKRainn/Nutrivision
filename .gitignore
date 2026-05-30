@@ -32,3 +32,6 @@ Desktop.ini
 
 # Training pipeline: all files under local data directory
 Code/Training model/Data/
+
+# Personal local notes (not for the repo)
+Code/Training model/Improvements.txt

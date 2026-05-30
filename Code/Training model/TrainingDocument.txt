@@ -4,9 +4,11 @@ We record what we actually do in the notebook and on disk. TrainingStrategy.txt
 is the plan; this file is the running log. When a "Next" item is finished, we move
 it into "Done" and add a new Next.
 
-Product goal (confirmed): fine-tune on **all** datasets under Data/, not a single
-export. Phase C full merge is required before the final train. Phase D smoke train on
-data.run1.yaml is only a GPU/pipeline check.
+goal: fine-tune on **all** datasets under Data/, not a single
+export. Phase C full merge is required before the final train. Before committing to the
+big merged dataset, we first ran a tiny smoke train on one dataset to confirm the
+pipeline worked end-to-end (so we wouldn't discover a setup bug halfway through a long
+run). The real fine-tune now runs from the standalone train.py script, not the notebook.
 
 
 Done
@@ -35,6 +37,8 @@ Done
 - Phase A: sample YOLO image + label from aicook train (12 boxes; decoded names
   e.g. beef, tomato, cheese, apple — notebook run confirmed). Phase A inventory
   complete.
+
+
 - Phase B: dataset_classes dict built from 5 yaml datasets (aicook 30, FOOD 120,
   Fridge Object 53, Fridge objects v12 10, LVIS 63 — notebook run confirmed).
 - Phase B: casing collisions — 276 name entries, 226 unique exact spellings, 191
@@ -44,26 +48,61 @@ Done
   nc=181 (notebook run confirmed).
 - Phase B: per-dataset id remap tables (all yaml sources renumber into sorted
   181-class list — notebook run confirmed).
-- Phase C (prep): data.run1.yaml for Fridge Object smoke train only.
+
+
+- Phase C (prep): wrote data.run1.yaml (Fridge Object only) so we could do a quick
+  smoke train first — we wanted to test that the pipeline works before committing to
+  the big merged data and risking getting stuck mid-run.
 - Phase C (full merge): copied 5 yaml datasets → 22708 images, 120190 boxes;
   Fridge detection COCO → 2518 train + 630 val images, 39548 boxes, 30 categories
   mapped (skipped generic Food); wrote Data/merged/data.merged.yaml (nc 181).
 - Phase C (verify): train 18897/18897, val 4719/4719, test 2240/2240 images and
   labels (1:1 — notebook run confirmed). Phase C complete.
-- Phase D smoke train: finished earlier (1 epoch, runs/smoke_fridge_object/,
-  pipeline check only — not final model).
-- Phase D fixes: requirements path, yolo12n.pt, absolute yaml paths, workers=0
-  on Windows.
+
+
+- Phase D smoke train: ran 1 epoch on the Fridge Object yaml (runs/smoke_fridge_object/)
+  purely to prove the training pipeline works before spending hours on the full merge.
+  Pipeline confirmed; not a real model.
+- Phase D fixes (found during the smoke train): requirements path, weight name is
+  yolo12n.pt (not yolov12n.pt), absolute yaml paths, workers=0 on Windows in Jupyter.
 - Notebook cleanup: Phase A/B/C each have Helpers where needed.
+- Environment fix: after a Python reinstall, torch came back CPU-only (2.12.0+cpu,
+  cuda False). Reinstalled the CUDA build from the cu130 index -> 2.12.0+cu130, GPU
+  (RTX 5060 Ti) detected. CPU training would have taken days.
+- Moved the final train out of the notebook into a standalone train.py. Running it as a
+  plain process (not Jupyter) avoids the Windows dataloader-worker spawn deadlock/crash
+  we kept hitting in the notebook. Settings: yolo12n.pt, merged data, epochs 35,
+  patience 15, batch 16, workers 8, cache 'disk', cos_lr, close_mosaic 10, device 0.
+- cache settings lesson: cache='ram' would have needed ~32 GB (with safety margin) and,
+  combined with Windows worker spawn, blew up memory (MemoryError pickling the val
+  cache to 8 workers). Switched to cache='disk', which fixed it.
+- First full production train (train.py on the merged 181-class data): ran overnight and
+  reached epoch 25/35 before crashing. Metrics at epoch 25: mAP50 0.605, mAP50-95 0.399,
+  precision 0.658, recall 0.579. best.pt and last.pt saved under
+  runs/nutrivision_merged_final/weights/.
+- Crash cause: at epoch 26 close_mosaic rebuilt the train dataloader, which re-spawned
+  8 Windows worker processes (each re-imports torch/CUDA). With the run already using
+  GPU + disk cache + other apps, Windows ran out of page-file / virtual memory ->
+  OSError WinError 1455 (paging file too small) while a worker loaded cufft64_12.dll.
+- Decision: stop at epoch 25. mAP50 ~0.605 is a usable first detector, so we keep
+  best.pt and move on rather than resume. Ideas to push accuracy later are recorded in
+  Improvements.txt (kept local / git-ignored).
+- Cleanup: removed the smoke-train and run1 cells and the in-notebook training (Phase D)
+  from VisionModelTraim.ipynb. The notebook is now just the data pipeline
+  (Phase A inventory -> Phase B harmonize -> Phase C merge). Deleted the leftover
+  data.run1.yaml. Training lives in train.py.
 
 
 Next
 --------------------------------------------------------------------------------
-- Phase D (final): run **Final train on merged data** cell (35 epochs, patience 15,
-  batch 12, workers 4 on Windows). Output: runs/nutrivision_merged_final/weights/best.pt
-- Phase E: sanity check on real fridge photos before Telegram integration.
+- Phase E: run best.pt (runs/nutrivision_merged_final/weights/best.pt) on real fridge
+  photos — are common ingredients found, boxes plausible, confusions clustered? — before
+  wiring the detector into the Telegram bot.
+- Telegram integration: point the bot's model load at best.pt.
 
 
 Later (placeholders — not started)
 --------------------------------------------------------------------------------
-- Optional: tune hyperparameters after first full train (epochs, batch, patience).
+- Accuracy improvements when we revisit training (see Improvements.txt): bigger model
+  (yolo12s/m), higher imgsz, class-imbalance handling, 181 -> ~120 class consolidation,
+  copy-paste/mixup augmentation, test-time augmentation.
