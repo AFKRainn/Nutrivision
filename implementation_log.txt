@@ -1,0 +1,136 @@
+NutriVision — Implementation Log
+================================================================================
+
+NEW FILES
+---------
+
+Database.py
+  SQLite persistence layer. DB file saved at: nutrivision.db (project root).
+  Tables: users, inventory, meal_history.
+  Functions:
+    init_db()                          — creates tables on startup
+    ensure_user(id)                    — inserts user row if not exists
+    get/set_calorie_goal               — daily calorie goal
+    get/set_meals_per_day              — meals per day target
+    get/set_vegan                      — vegan mode toggle
+    reset_diet                         — resets all diet fields to NULL/0
+    get_diet(id)                       — returns dict {calorie_goal, meals_per_day, vegan_mode}
+    get/add/remove/clear_inventory     — manages saved ingredient inventory per user
+    log_meal(id, name, calories, src)  — appends a meal to meal_history
+    get_meal_history(id, limit)        — returns last N meals
+    get_calories_per_day(id, days)     — daily calorie totals for analytics
+    get_avg_calories(id, days)         — average kcal/day over N days
+    get_meals_per_day(id, days)        — meal count per day
+    get_goal_adherence(id, days)       — under/on-target/over breakdown vs calorie goal
+    get_meal_variety(id, days)         — unique vs total meals, breakdown by meal name
+
+LLM.py
+  OpenRouter API calls via httpx (async).
+  Uses env vars: OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL.
+  Functions:
+    generate_meal_suggestions(ingredients, calorie_goal, vegan, recent_meals)
+      — sends ingredient list + diet context to LLM
+      — returns list of 3 dicts: {name, description, calories, steps}
+      — avoids repeating recently logged meals
+      — respects vegan mode and calorie goal in prompt
+    generate_cooking_instructions(meal_name, ingredients)
+      — returns numbered step-by-step cooking guide as plain text
+      — beginner-friendly tone
+
+Helpers.py (updated — was only is_user_allowed)
+  Pure formatting functions, no side effects.
+    is_user_allowed(update, allowed_ids)   — unchanged, blocks unauthorized users
+    format_ingredient_list(dict)           — formats {name: confidence} into bullet list
+    format_meal_suggestions(list[dict])    — formats 3 meals with /choose1/2/3 prompt
+    format_meal_history(list[dict])        — formats recent meal log
+    format_inventory(list[str])            — formats saved inventory
+    format_diet(dict)                      — formats diet settings display
+    parse_int_arg(args)                    — safely parses first arg as int
+
+
+COMMANDS IMPLEMENTED (TelegramServer.py)
+----------------------------------------
+
+Navigation
+  /start, /help         — welcome message + model status. Calls ensure_user (DB).
+  /cancel               — clears user_data, ends any active session.
+  /mainmenu             — alias for /start.
+
+Image session flow
+  /new_session          — clears user_data, sets session_active=True.
+  /add_images, /done    — runs YOLO on pending_images, stores results in
+                          user_data["ingredients"]. Uses _run_detection_on_paths
+                          (calls Detector.detect_image + merge_detections).
+                          Sends annotated overlay photo.
+  /show_ingredients     — shows user_data["ingredients"] via format_ingredient_list.
+
+Manual ingredient correction (session list only, not inventory)
+  /add_ingredient       — adds ingredient to user_data["ingredients"] at conf=1.0.
+  /remove_ingredient    — removes ingredient from user_data["ingredients"].
+
+Meal suggestion flow
+  /suggest              — uses user_data["ingredients"] + DB diet + recent history
+                          → calls LLM.generate_meal_suggestions
+                          → stores result in user_data["suggestions"]
+                          → sends formatted 3 meals.
+  /inventorysuggest     — same as /suggest but uses DB inventory instead of session ingredients.
+  /choose1/2/3          — stores user_data["chosen_meal"] from suggestions list.
+                          All three commands route to handle_choose_meal,
+                          which reads the last digit of the command to pick index 0/1/2.
+  /cook                 — calls LLM.generate_cooking_instructions for chosen_meal.
+                          Logs the meal to DB via log_meal (source="suggestion").
+
+Inventory management
+  /update_inventory show    — shows DB inventory via format_inventory.
+  /update_inventory add ... — adds one or more ingredients to DB inventory.
+  /update_inventory remove  — removes one ingredient from DB inventory.
+  /update_inventory clear   — clears entire DB inventory.
+
+Manual meal logging
+  /log_meal <name> <kcal>   — logs a meal manually. Last arg = calories (int).
+                               Source stored as "manual" in meal_history.
+
+Diet settings
+  /set_calorie_goal <n>  — saves calorie goal to DB.
+  /set_meals_per_day <n> — saves meals/day target to DB.
+  /vegan_on              — sets vegan_mode=1 in DB.
+  /vegan_off             — sets vegan_mode=0 in DB.
+  /diet_reset            — sets all diet fields to NULL/0 in DB.
+  /show_diet             — reads DB diet settings, formats and sends.
+
+Analytics
+  /avg_calories          — get_avg_calories(7 days) from DB.
+  /calories_graph        — get_calories_per_day(7 days), generates matplotlib bar
+                           chart and sends as photo. Falls back to text list if
+                           matplotlib not installed.
+  /meals_per_day         — get_meals_per_day(7 days), text list per day.
+  /goal_adherence        — get_goal_adherence(7 days): under/on-target/over vs goal.
+                           Returns error message if no calorie goal is set.
+  /meal_history          — get_meal_history(last 10), formatted via format_meal_history.
+  /most_used             — shows current inventory as a proxy for frequently used items.
+  /unusedingredients     — compares inventory against meal_history names,
+                           lists items not found in any logged meal name.
+  /variety               — get_meal_variety(30 days): total, unique, per-meal count.
+
+
+COMMAND ALIASES
+---------------
+Every Commands.txt command name is registered alongside the snake_case internal name.
+Examples: /newsession = /new_session, /addingredient = /add_ingredient,
+          /setcalories = /set_calorie_goal, /veganon = /vegan_on, etc.
+Full alias list is in the main() function of TelegramServer.py.
+
+
+DEPENDENCIES ADDED (requirements.txt)
+--------------------------------------
+  httpx>=0.27      — async HTTP client for LLM API calls in LLM.py
+  matplotlib>=3.8  — bar chart generation for /calories_graph
+
+
+ARCHITECTURE SUMMARY
+--------------------
+TelegramServer.py  — thin handlers only. No business logic inline.
+Database.py        — all SQLite reads/writes. Called via asyncio.to_thread.
+LLM.py             — all OpenRouter calls. Fully async (httpx).
+Helpers.py         — pure formatting functions. No I/O.
+Detector.py        — YOLO inference. Called via asyncio.to_thread.
