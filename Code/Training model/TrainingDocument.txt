@@ -91,14 +91,19 @@ Done
   from VisionModelTraim.ipynb. The notebook is now just the data pipeline
   (Phase A inventory -> Phase B harmonize -> Phase C merge). Deleted the leftover
   data.run1.yaml. Training lives in train.py.
+- Notebook: added a results plotting cell (reads results.csv from the train.py run).
+- Telegram + detector: added Code/Detector.py (loads best.pt, runs YOLO predict,
+  merges multi-image detections). Wired TelegramServer.py so we test the model through
+  the bot instead of a manual Phase E: /new_session -> send photos -> /add_images or
+  /done -> ingredient list + annotated overlay images; /show_ingredients to re-list.
 
 
 Next
 --------------------------------------------------------------------------------
-- Phase E: run best.pt (runs/nutrivision_merged_final/weights/best.pt) on real fridge
-  photos — are common ingredients found, boxes plausible, confusions clustered? — before
-  wiring the detector into the Telegram bot.
-- Telegram integration: point the bot's model load at best.pt.
+- Test detection through Telegram on real fridge photos (replaces manual Phase E):
+  note misses, false positives, confused classes as we use the bot.
+- Wire /suggest_from_detection (OpenRouter) once ingredient list flow feels OK.
+- Telegram: /addingredient, /removeingredient, confirm flow per Commands.txt.
 
 
 Later (placeholders — not started)

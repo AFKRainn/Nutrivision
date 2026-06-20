@@ -1,12 +1,20 @@
+import asyncio
 import logging
 import os
+import tempfile
 from functools import wraps
-from pprint import pprint
+from pathlib import Path
 
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
+from Detector import (
+    DEFAULT_CONF,
+    detect_image,
+    merge_detections,
+    weights_available,
+)
 from Helpers import is_user_allowed
 
 load_dotenv()
@@ -38,35 +46,134 @@ def allowlisted(handler):
 
     return wrapped
 
+
+def _format_ingredient_list(ingredients: dict[str, float]) -> str:
+    if not ingredients:
+        return "No ingredients detected."
+    lines = [f"• {name} ({conf:.0%})" for name, conf in ingredients.items()]
+    return "Detected ingredients:\n" + "\n".join(lines)
+
+
+async def _download_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Path:
+    photo = update.message.photo[-1]
+    tg_file = await context.bot.get_file(photo.file_id)
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    tmp.close()
+    await tg_file.download_to_drive(tmp.name)
+    return Path(tmp.name)
+
+
+def _run_detection_on_paths(image_paths: list[str]) -> tuple[dict[str, float], list[Path]]:
+    all_detections: list[list[dict]] = []
+    annotated_paths: list[Path] = []
+    for raw in image_paths:
+        dets, annotated = detect_image(Path(raw), conf=DEFAULT_CONF)
+        all_detections.append(dets)
+        if annotated is not None:
+            annotated_paths.append(annotated)
+    return merge_detections(all_detections), annotated_paths
+
+
 @allowlisted
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start the bot, create user profile if needed, show main actions (Commands.txt: /start)."""
-    print("[CMD] /start", f"args={context.args!r}")
-    pprint(update.to_dict())
-
-
-@allowlisted
-async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Development stub for listing help text; product flow uses /mainmenu and inline buttons."""
-    print("[CMD] /help", f"args={context.args!r}")
-    pprint(update.to_dict())
+    model_note = (
+        "Model: best.pt loaded."
+        if weights_available()
+        else "Model: best.pt not found — run train.py first."
+    )
+    await update.message.reply_text(
+        "NutriVision bot.\n\n"
+        "To test ingredient detection:\n"
+        "1. /new_session — start a photo session\n"
+        "2. Send fridge / pantry photos\n"
+        "3. /add_images (or /done) — run the detector\n"
+        "4. /show_ingredients — list results again\n\n"
+        f"{model_note}"
+    )
 
 
 # Image / suggestion
 
 
 @allowlisted
+async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Development stub for listing help text; product flow uses /mainmenu and inline buttons."""
+    await handle_start(update, context)
+
+
+@allowlisted
 async def handle_new_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start a new image-based meal suggestion session; user can send multiple images (Commands.txt: /newsession)."""
-    print("[CMD] /new_session", f"args={context.args!r}")
-    pprint(update.to_dict())
+    context.user_data.clear()
+    context.user_data["session_active"] = True
+    context.user_data["pending_images"] = []
+    context.user_data["ingredients"] = {}
+
+    if not weights_available():
+        await update.message.reply_text(
+            "Session started, but best.pt is missing on disk. "
+            "Run train.py before detection will work."
+        )
+        return
+
+    await update.message.reply_text(
+        "New session started.\n"
+        "Send one or more fridge / pantry photos.\n"
+        "When finished, send /add_images or /done to run detection."
+    )
 
 
 @allowlisted
 async def handle_add_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Signal that the user finished sending images so the batch can be processed (Commands.txt: /done; registered as add_images)."""
-    print("[CMD] /add_images", f"args={context.args!r}")
-    pprint(update.to_dict())
+    if not context.user_data.get("session_active"):
+        await update.message.reply_text("No active session. Start with /new_session.")
+        return
+
+    pending: list[str] = context.user_data.get("pending_images", [])
+    if not pending:
+        await update.message.reply_text("No photos received yet. Send images first.")
+        return
+
+    if not weights_available():
+        await update.message.reply_text("best.pt not found. Run train.py first.")
+        return
+
+    await update.message.reply_text(f"Running detection on {len(pending)} image(s)…")
+
+    try:
+        ingredients, annotated_paths = await asyncio.to_thread(
+            _run_detection_on_paths, pending
+        )
+    except Exception as exc:
+        logging.exception("detection failed")
+        await update.message.reply_text(f"Detection failed: {exc}")
+        return
+
+    context.user_data["ingredients"] = ingredients
+    context.user_data["session_active"] = False
+
+    await update.message.reply_text(
+        _format_ingredient_list(ingredients)
+        + f"\n\n({len(pending)} image(s) processed)"
+    )
+
+    for ann_path in annotated_paths:
+        with open(ann_path, "rb") as f:
+            await update.message.reply_photo(f, caption="Detection overlay")
+
+
+@allowlisted
+async def handle_show_ingredients(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show the current ingredient list after detection (Commands.txt: /showingredients)."""
+    ingredients: dict[str, float] = context.user_data.get("ingredients", {})
+    if not ingredients:
+        await update.message.reply_text(
+            "No ingredients yet. /new_session → send photos → /add_images."
+        )
+        return
+    await update.message.reply_text(_format_ingredient_list(ingredients))
 
 
 @allowlisted
@@ -233,8 +340,24 @@ async def handle_non_command_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """Plain text or photos (e.g. fridge images during a session); not a slash command in Commands.txt."""
-    print("message received")
-    pprint(update.to_dict())
+    if update.message.photo:
+        if not context.user_data.get("session_active"):
+            await update.message.reply_text(
+                "Send /new_session first, then your photos."
+            )
+            return
+        path = await _download_photo(update, context)
+        pending: list[str] = context.user_data.setdefault("pending_images", [])
+        pending.append(str(path))
+        await update.message.reply_text(
+            f"Photo {len(pending)} received. Send more or /add_images when done."
+        )
+        return
+
+    if update.message.text:
+        await update.message.reply_text(
+            "Use /new_session to start, then send photos. /start for help."
+        )
 
 
 def main() -> None:
@@ -248,6 +371,8 @@ def main() -> None:
 
     application.add_handler(CommandHandler("new_session", handle_new_session))
     application.add_handler(CommandHandler("add_images", handle_add_images))
+    application.add_handler(CommandHandler("done", handle_add_images))
+    application.add_handler(CommandHandler("show_ingredients", handle_show_ingredients))
     application.add_handler(CommandHandler("suggest_from_detection", handle_suggest_from_detection))
     application.add_handler(
         CommandHandler("suggest_from_inventory", handle_suggest_from_inventory)
