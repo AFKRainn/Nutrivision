@@ -22,7 +22,7 @@ def main() -> None:
     model = YOLO("yolo12n.pt")
     model.train(
         data=str(MERGED_TRAIN_YAML),
-        epochs=35,
+        epochs=25,
         imgsz=640,
         batch=16,
         patience=15,
